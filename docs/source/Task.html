@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js">/*
+ * @title Task
+ * @copyright (c) 2015 Sensibill Inc.
+ * @license MIT
+ * @author Bradley Arsenault
+ */
+
+var errors = require(&quot;./errors/errors&quot;),
+    moment = require('moment'),
+    async = require('async');
+
+<span id='Task'>/**
+</span> * @class Task
+ *
+ * A task is a single instance of a task that is being worked on by the engine.
+ *
+ * @member {String}  history - A string containing the log history for this task
+ * @member {Number}  complete - A number with what the percent completion of this task is. Between 0 and 100.
+ *
+ */
+
+<span id='Task-method-constructor'>/**
+</span> * Construct a task. This should only be done internally by the Worker system.
+ *
+ * @private
+ *
+ * @method constructor
+ *
+ * @param {Object} data for the task object
+ * @param {Object} registry - the registry where all tasks are registered
+ *
+ * @return {Object} A freshly created Task object.
+ */
+function Task(data, registry)
+{
+    var self = this;
+
+    self.registry = registry;
+    self.name = data.name;
+    self.description = registry.tasks[data.name];
+    self.parameters = data.parameters;
+    if(data.metadata)
+    {
+        self.metadata = data.metadata;
+    }
+    else
+    {
+        self.metadata = {};
+    }
+    self.history = &quot;&quot;;
+    self.results = [];
+    self.percentageComplete = 0;
+}
+
+
+
+<span id='Task-method-log'>/**
+</span> *  This method allows tasks to record log output. This can be used to provide information on how the task is processing.
+ *
+ *  @method log
+ *
+ *  @param {String} [level] - An optional log level for the message. Default to 'info'
+ *  @param message - a string providing the message for the task log output.
+ *  @param [done] - an optional callback that will be called once the log message has been successfully recorded.
+ *
+ */
+Task.prototype.log = function log(level, message, done)
+{
+    var self = this;
+
+    // Reset the timeout on task execution.
+    if(self._resetTimeout)
+    {
+        self._resetTimeout();
+    }
+
+    // Deal with the optional parameter
+    if(done === undefined)
+    {
+        done = message;
+        message = level;
+        level = &quot;info&quot;;
+    }
+
+    // Store the log message on the task history
+    self.history += moment().format(&quot;YYYY-MMM-DD hh:mm:ss A&quot;) + &quot; - &quot; + message + &quot;\n&quot;;
+
+    // Send to the registry hooks
+    async.applyEach(self.registry.hooks.log, self, level, message, function(err)
+    {
+        if(err)
+        {
+            if(done)
+            {
+                return done(err);
+            }
+        }
+        else
+        {
+            if(done)
+            {
+                return done();
+            }
+        }
+    });
+};
+
+
+<span id='Task-method-updatePercentageComplete'>/**
+</span> *  This method allows you to record task progress as a percentage
+ *
+ *  @method updatePercentageComplete
+ *
+ *  @param percent - A number between 0 and 100 which indicates how close the task is to completion.
+ *  @param [done] - An optional callback that will be issued
+ *
+ */
+Task.prototype.updatePercentageComplete = function updatePercentageComplete(percent, done)
+{
+    var self = this;
+
+    // Reset the timeout on task execution.
+    if(self._resetTimeout)
+    {
+        self._resetTimeout();
+    }
+
+    // Don't do anything if the percentage is the same as the one we already have
+    if(percent == self.percentageComplete)
+    {
+        return done();
+    }
+
+    // Store the percentage completion
+    self.percentageComplete = percent;
+
+    // Send to the registry hooks
+    async.applyEach(self.registry.hooks.percentageComplete, self, percent, function(err)
+    {
+        if(err)
+        {
+            if(done)
+            {
+                return done(err);
+            }
+        }
+        else
+        {
+            if(done)
+            {
+                return done();
+            }
+        }
+    });
+};
+
+
+<span id='Task-method-updatePercentageComplete'>/**
+</span> *  This method allows you to both log a message and update the completion percentage in a single API call, for convenience.
+ *
+ *  @method updatePercentageComplete
+ *
+ *  @param percent - A number between 0 and 100 which indicates how close the task is to completion.
+ *  @param {String} [level] - An optional log level for the message. Default to 'info'
+ *  @param message - a string providing the message for the task log output.
+ *  @param [done] - An optional callback that will be issued
+ *
+ */
+Task.prototype.updatePercentageCompleteAndLog = function updatePercentageCompleteAndLog(percent, level, message, done)
+{
+    var self = this;
+
+    // Reset the timeout on task execution.
+    if(self._resetTimeout)
+    {
+        self._resetTimeout();
+    }
+
+    // Deal with the optional parameter
+    if(done === undefined)
+    {
+        done = message;
+        message = level;
+        level = &quot;info&quot;;
+    }
+
+    self.log(level, message, function(err)
+    {
+        if(err)
+        {
+            if(done)
+            {
+                return done(err);
+            }
+        }
+        else
+        {
+            self.updatePercentageComplete(percent, function(err)
+            {
+                if(err)
+                {
+                    if(done)
+                    {
+                        return done(err);
+                    }
+                }
+                else
+                {
+                    if(done)
+                    {
+                        return done(err);
+                    }
+                }
+            });
+        }
+    })
+};
+
+
+<span id='Task-method-execute'>/**
+</span> *  This method executes the task.
+ *
+ *  @method execute
+ *
+ *  @param done - A callback that will be called when this task is done execution.
+ *
+ */
+Task.prototype.execute = function execute(done)
+{
+    var self = this;
+
+    // Use the timeout
+    var timeout = null;
+    if(self.description.timeout !== undefined)
+    {
+        timeout = self.description.timeout;
+    }
+    else if(self.registry.options.defaultTimeout !== undefined)
+    {
+        timeout = self.registry.options.defaultTimeout;
+    }
+
+    var timeoutHandle = null;
+
+    var handledCompletion = false;
+    function handleResponse(err)
+    {
+        // update our percent complete to 100. This should occur even if the task timed out and later recovered from the timeout,
+        // because if the task continued executing, it may have set the percentageComplete back to something other then 100.
+        self.updatePercentageComplete(100, function(percentageUpdateError)
+        {
+            if(percentageUpdateError)
+            {
+                console.log(&quot;Error while attempting to update the percentage complete on the task after it completed.&quot;, percentageUpdateError, percentageUpdateError.stack);
+            }
+
+            if(!handledCompletion)
+            {
+                handledCompletion = true;
+
+                if(timeoutHandle)
+                {
+                    clearTimeout(timeoutHandle);
+                }
+
+                if(err)
+                {
+                    // Send to each of the hooks in the registry for errors
+                    async.applyEach(self.registry.hooks.error, self, err, function(hookErr)
+                    {
+                        if(hookErr)
+                        {
+                            console.log(&quot;The error hook attached to the Beaver registry itself produced an error!&quot;, hookErr, hookErr.stack);
+                        }
+
+                        return done(err);
+                    });
+                }
+                else
+                {
+                    // Send to each of the post-finish hooks.
+                    async.applyEach(self.registry.hooks.finish, self, function(hookErr)
+                    {
+                        if(hookErr)
+                        {
+                            return done(hookErr);
+                        }
+                        else
+                        {
+                            return done();
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+
+    self._resetTimeout = function()
+    {
+        if(timeoutHandle)
+        {
+            clearTimeout(timeoutHandle);
+        }
+
+        if(timeout)
+        {
+            timeoutHandle = setTimeout(function()
+            {
+                handleResponse(new errors.TaskTimedOutError(&quot;The task &quot; + self.name + &quot; has timed out.&quot;));
+            }, timeout);
+        }
+    };
+
+    self._resetTimeout();
+
+
+    // Send to each of the hooks in the registry for pre-task execution
+    async.applyEach(self.registry.hooks.start, self, function(err)
+    {
+        if(err)
+        {
+            return done(err);
+        }
+        else
+        {
+            self.description.func.call(self, self.parameters, function(err)
+            {
+                handleResponse(err);
+            });
+        }
+    });
+};
+
+
+<span id='Task-method-addMetadata'>/**
+</span> * Add a piece of metadata that should be serialized along with the task when its queued
+ *
+ */
+Task.prototype.addMetadata = function addMetadata(name, value)
+{
+    this.metadata[name] = value;
+};
+
+
+<span id='Task-method-addResult'>/**
+</span> *  This method allows you to record &quot;results&quot; from the task object.
+ *
+ *  @method addResult
+ *
+ *  @param result - A JSON serializable value/object which will be sent to any result hooks and stored with the Task permamently.
+ *  @param [done] - An optional callback that will be issued once the result is successfully stored.
+ *
+ */
+Task.prototype.addResult = function addResult(result, done)
+{
+    var self = this;
+
+    // Reset the timeout on task execution.
+    if(self._resetTimeout)
+    {
+        self._resetTimeout();
+    }
+
+    // Store the result
+    self.results.push(result);
+
+    // Send to the registry hooks
+    async.applyEach(self.registry.hooks.result, self, result, function(err)
+    {
+        if(err)
+        {
+            if(done)
+            {
+                return done(err);
+            }
+        }
+        else
+        {
+            if(done)
+            {
+                return done();
+            }
+        }
+    });
+};
+
+
+<span id='Task-method-serializeJSON'>/**
+</span> * Serialize the task object into a JSON form that can later be deserialized
+ *
+ */
+Task.prototype.serializeJSON = function serializeJSON()
+{
+    return {
+        name: this.name,
+        parameters: this.parameters,
+        metadata: this.metadata
+    };
+};
+
+
+<span id='Task-method-deserializeJSON'>/**
+</span> * Deserializes the given JSON back into a Task object, with the given registry object.
+ *
+ * @param json - The JSON object that needs to be deserialized.
+ * @param registry - A Registry object that holds the registration of tasks
+ */
+Task.deserializeJSON = function deserializeJSON(json, registry)
+{
+    return new Task(json, registry);
+};
+
+
+
+
+
+// Expose the Task
+module.exports = Task;</pre>
+</body>
+</html>

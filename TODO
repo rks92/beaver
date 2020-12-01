@@ -1,0 +1,23 @@
+
+
+
+- Need to write code for when a task is registered after a Queue is already been created. Queues need to get notified that a new task has been registered.
+    - In general you should be able to initialize things in any order you want.
+
+
+- Possibly need better handling for amqp errors.
+- Beaver needs flexible retry semantics. Currently there is no automatic retry - once a task fails, it failed.
+- Scheduling in the beaver library would ideally write down the last time an execution occurred in a file somewhere, so that it doesn't reschedule immediately on start up every time
+- There can be some funky behaviour resulting from DB-scanning if the objects in are being changed
+  while the scanning is still occurring. Instead of queueing tasks while cursoring over the database, it might be prudent to instead build up a list of _id's to queue, and then queue all of those objects in one big lump at the end of the scan.
+- Unable to store a mongo query inside the parameters for a Task, because Mongo will refuse storing JSON objects that have $'s in the keys.
+
+Documentation to write:
+    - Need to create a README example for hooks
+    - Need more of a walkthrough style format, rather then relying entirely upon whole examples. The format should hilight relevant sections of the
+        example code instead of just copying and pasting in an entire example.
+    - More of a description of the Job objects created by the Mongoose plugin.
+
+    - Wish there was a way to get the generated API docs into markdown format.
+
+    - Need to comb over the API docs for missing functions and functions that shouldn't be publicly documented

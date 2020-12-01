@@ -1,0 +1,98 @@
+{
+  "_args": [
+    [
+      "beaver@0.2.1",
+      "/Users/rahul/projects/si/sensibill/sensibill-api"
+    ]
+  ],
+  "_from": "beaver@0.2.1",
+  "_id": "beaver@0.2.1",
+  "_inBundle": false,
+  "_integrity": "sha1-OI/7u/HClcMGmD7cGIWEJyV+nj0=",
+  "_location": "/beaver",
+  "_phantomChildren": {
+    "bitsyntax": "0.0.4",
+    "bson": "1.0.4",
+    "buffer-more-ints": "0.0.2",
+    "core-util-is": "1.0.2",
+    "hooks-fixed": "2.0.0",
+    "inherits": "2.0.4",
+    "isarray": "0.0.1",
+    "kareem": "1.5.0",
+    "lodash": "4.17.11",
+    "mongodb": "2.2.31",
+    "mpath": "0.3.0",
+    "mpromise": "0.5.5",
+    "mquery": "2.3.2",
+    "ms": "2.0.0",
+    "muri": "1.2.2",
+    "regexp-clone": "0.0.1",
+    "sliced": "1.0.1",
+    "when": "3.6.4"
+  },
+  "_requested": {
+    "type": "version",
+    "registry": true,
+    "raw": "beaver@0.2.1",
+    "name": "beaver",
+    "escapedName": "beaver",
+    "rawSpec": "0.2.1",
+    "saveSpec": null,
+    "fetchSpec": "0.2.1"
+  },
+  "_requiredBy": [
+    "/"
+  ],
+  "_resolved": "https://registry.npmjs.org/beaver/-/beaver-0.2.1.tgz",
+  "_spec": "0.2.1",
+  "_where": "/Users/rahul/projects/si/sensibill/sensibill-api",
+  "contributors": [
+    {
+      "name": "Sensibill Inc.",
+      "email": "webmaster@getsensibill.com",
+      "url": "https://getsensibill.com"
+    }
+  ],
+  "dependencies": {
+    "amqplib": "0.4.x",
+    "async": "1.4.x",
+    "bluebird": "3.4.x",
+    "moment": "2.10.x",
+    "mongoose": "5.1.x",
+    "sift": "2.0.x",
+    "underscore": "1.8.x"
+  },
+  "description": "An AMQP based task execution framework for NodeJS that is both reliable and super easy to use.",
+  "devDependencies": {
+    "mocha": "1.20.x"
+  },
+  "homepage": "https://bitbucket.org/sensibill/beaver#readme",
+  "keywords": [
+    "task",
+    "execution",
+    "job",
+    "background",
+    "task",
+    "reliable",
+    "execution",
+    "cron",
+    "cluster",
+    "AMQP",
+    "RabbitMQ",
+    "MongoDB",
+    "node",
+    "mongo",
+    "mongoose"
+  ],
+  "license": "MIT",
+  "main": "lib/lib.js",
+  "name": "beaver",
+  "repository": {
+    "type": "mercurial",
+    "url": "git+https://bitbucket.org/sensibill/beaver.git"
+  },
+  "scripts": {
+    "test": "mocha --reporter spec test"
+  },
+  "version": "0.2.1"
+}

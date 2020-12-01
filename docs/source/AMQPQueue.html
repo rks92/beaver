@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js">/*
+ * @title AMQPQueue
+ * @copyright (c) 2015 Sensibill Inc.
+ * @license MIT
+ * @author Bradley Arsenault
+ */
+
+
+var Queue = require('./Queue'),
+    Task = require('./Task'),
+    amqplib = require('amqplib'),
+    async = require('async'),
+    underscore = require('underscore'),
+    errors = require('./errors/errors');
+
+<span id='AMQPQueue'>/**
+</span> * @class AMQPQueue
+ *
+ * The AMQP Queue uses an external message queueing service, such as RabbitMQ, to manage the queueing of tasks
+ *
+ */
+
+
+<span id='AMQPQueue-method-constructor'>/**
+</span> * Constructs an AMQPQueue object.
+ *
+ * @method constructor
+ *
+ * @param registry - The beaver registry which contains the registry of tasks
+ * @param options - An object containing options for configuring this queue. The object must contain the following fields:
+ * @param options.url - The URL of RabbitMQ or another compatible AMQP message queue. Looks like &quot;amqp://hostname/&quot;
+ * @param [options.prefix] - A prefix for all queue and exchange names to be created for this Queue.
+ */
+function AMQPQueue (registry, options)
+{
+    var self = this;
+
+    // Initialize the base class
+    Queue.call(this, registry, options);
+
+    self.registry = registry;
+
+    self.options = options;
+
+    if(!underscore.isObject(options))
+    {
+        throw new Error(&quot;`options` provided to the AMQPQueue must be an object.&quot;);
+    }
+
+    if(!options.url || !underscore.isString(options.url))
+    {
+        throw new Error(&quot;`options.url` is required to initialize the AMQPQueue, and must be a string.&quot;);
+    }
+
+    if (options.prefix === null || options.prefix === undefined)
+    {
+        options.prefix = &quot;default&quot;;
+    }
+
+    var amqpConnectionOptions = {
+        heartbeat: 30
+    };
+
+    self.amqpConnection = amqplib.connect(options.url, amqpConnectionOptions);
+
+    self.workers = [];
+    self.currentWorker = 0;
+}
+
+
+AMQPQueue.prototype.queueNameForTask = function queueNameForTask (task)
+{
+    var self = this;
+    return self.options.prefix + &quot;-worker-queue-&quot; + task.name;
+};
+
+<span id='AMQPQueue-method-initialize'>/**
+</span> * Initializes the Queue. Executes things that must be done asynchronously, such as connections to third party services.
+ *
+ * Currently there is a limitation which will require you to define all of your tasks before initializing your queue object.
+ * This limitation may be eliminated in a future release!
+ *
+ * @param done - The callback which will be called when initialization has completed.
+ *
+ */
+AMQPQueue.prototype.initialize = function initialize (done)
+{
+    var self = this;
+
+    self.exchangeName = self.options.prefix + &quot;-worker-tasks&quot;;
+
+    self.amqpConnection.then(function (conn)
+    {
+        // create a channel for most general operations.
+        if (!self.amqpChannel)
+        {
+            self.amqpChannel = conn.createChannel();
+        }
+
+        // Create an exchange for this queue.
+        self.amqpChannel.then(function (channel)
+        {
+            var exchangeOptions = {
+                durable:    true,
+                internal:   false,
+                autoDelete: false
+            };
+
+            channel.assertExchange(self.exchangeName, 'direct', exchangeOptions).then(function (exchange)
+            {
+                // Create a queue that receives messages on the cluster communication exchange
+                var queueOptions = {
+                    exclusive:  false,
+                    durable:    true,
+                    autoDelete: false
+                };
+
+                // Create a queue for each of the registered tasks
+                async.each(Object.keys(self.registry.tasks), function (taskName, next)
+                    {
+                        channel.assertQueue(self.queueNameForTask(self.registry.tasks[taskName]), queueOptions).then(function (queueInfo)
+                        {
+                            channel.bindQueue(queueInfo.queue, self.exchangeName, taskName);
+
+                            return next();
+                        });
+                    },
+                    function (err)
+                    {
+                        if (err)
+                        {
+                            return done(err);
+                        }
+                        else
+                        {
+                            return done();
+                        }
+                    });
+            });
+        });
+    }).then(null, function (err)
+    {
+        // Send back an error wrapping the amqp error.
+        var message = &quot;Could not connect to the AMQP Server on &quot; + self.options.url + &quot;: &quot; + err.toString();
+        return done(new errors.AMQPConnectionError(message));
+    });
+};
+
+
+<span id='AMQPQueue-method-queueTask'>/**
+</span> * Queues a task to be executed
+ *
+ * @method queueTask
+ *
+ * @param name - The name of the task to be queued
+ * @param parameters - A simple object with parameters sent to the task. Must be JSON serializable - e.g. no circular references
+ * @param [done] - A callback to be executed after the task has been successfully queued
+ */
+AMQPQueue.prototype.queueTask = function queueTask (name, parameters, done)
+{
+    var self = this;
+
+    // Check that the task name and parameters are valid
+    self.checkTask(name, parameters);
+
+    if (!self.amqpChannel)
+    {
+        return done(new Error(&quot;Unable to queue task: You must call AMQPQueue.initialize first before attempting to queue any tasks!&quot;));
+    }
+
+    self.amqpChannel.then(function (channel)
+    {
+        var messageOptions = {
+            persistent: true
+        };
+
+        var task = new Task({name: name, parameters: parameters}, self.registry);
+
+        // Execute all of the queue task hooks
+        async.applyEach(self.registry.hooks.queue, task, function(err)
+        {
+            if(err)
+            {
+                return done(err);
+            }
+            else
+            {
+                var json = task.serializeJSON();
+                channel.publish(self.exchangeName, name, new Buffer(JSON.stringify(json)), messageOptions);
+
+                if (done)
+                {
+                    done(null, task);
+                }
+            }
+        });
+    });
+};
+
+
+<span id='AMQPQueue-method-registerWorker'>/**
+</span> * This function is used to register a worker to execute tasks on this queue.
+ *
+ * @method registerWorker
+ *
+ * @param worker - The worker object to execute tasks.
+ *
+ * @param done - A callback in the form of function(err) that will be called once the worker is successfully registered to execute
+ *             - tasks from this Queue.
+ */
+AMQPQueue.prototype.registerWorker = function registerWorker (worker, done)
+{
+    var self = this;
+    self.workers.push(worker);
+
+    if (!self.amqpConnection)
+    {
+        return done(new Error(&quot;Unable to register the worker: You must call AMQPQueue.initialize first before attempting to register any workers&quot;));
+    }
+
+    self.amqpConnection.then(function (conn)
+    {
+        // Create a channel for this worker.
+        conn.createChannel().then(function (channel)
+        {
+            // Maximum one message at a time for each worker.
+            channel.prefetch(1);
+
+            // Bind this worker to all the tasks in the registry
+            async.each(Object.keys(self.registry.tasks), function (taskName, next)
+            {
+                channel.consume(self.queueNameForTask(self.registry.tasks[taskName]), function (msg)
+                {
+                    // Decode the message, which is in JSON
+                    var taskData = null;
+                    try
+                    {
+                        taskData = JSON.parse(msg.content.toString());
+                    }
+                    catch (err)
+                    {
+                        // TODO: this should be logged in some other way
+                        console.error(&quot;Error occurred while processing inter-server message in the Beaver libraries AMQP Module. Could not decode the JSON: &quot;, err);
+                        channel.ack(msg);
+                        return;
+                    }
+
+                    // If we have no workers available, nack the message so another queue can grab it
+                    if (self.workers.length == 0)
+                    {
+                        channel.nack(msg);
+                    }
+                    else
+                    {
+                        // Choose which worker to send this task to
+                        self.currentWorker = (self.currentWorker + 1) % self.workers.length;
+                        var worker = self.workers[self.currentWorker];
+
+                        var task = Task.deserializeJSON(taskData, self.registry);
+
+                        // Send the task for execution
+                        worker.executeTask(task, function (err)
+                        {
+                            if (err)
+                            {
+                                // TODO: this should be logged in some other way
+                                console.error(&quot;Error occurred while processing a task in the Beaver libraries AMQP Module. &quot;, err);
+                            }
+
+                            // Acknowledge the task executed
+                            channel.ack(msg);
+                        });
+                    }
+                });
+
+                return next();
+
+            }, function (err)
+            {
+                return done(err);
+            });
+        });
+
+    });
+};
+
+
+<span id='AMQPQueue-property-__proto__'>/**
+</span> * Inherit from Queue
+ */
+AMQPQueue.prototype.__proto__ = Queue.prototype;
+
+
+// Expose the AMQP DAM
+module.exports = AMQPQueue;
+
+</pre>
+</body>
+</html>

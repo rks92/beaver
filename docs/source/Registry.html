@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js">/*
+ * @title Registry
+ * @copyright (c) 2015 Sensibill Inc.
+ * @license MIT
+ * @author Bradley Arsenault
+ */
+
+var errors = require('./errors/errors'),
+    underscore = require('underscore');
+
+<span id='Registry'>/**
+</span> * @class Registry
+ *
+ * The Registry is a central object where all tasks that need to be executed get registered.
+ *
+ * @member {Object}  tasks     An object mapping task-names to descriptions of those tasks
+ *
+ */
+
+<span id='Registry-method-constructor'>/**
+</span> * Construct the worker registry.
+ *
+ * @method constructor
+ *
+ * @param {Object} options An options object containing each of the following fields:
+ *
+ * @param {Number} [options.defaultTimeout] - This is the default timeout for all tasks across the system. If this is not set,
+ *                                            all tasks must have a timeout set on their task options. When set to null,
+ *                                            this is the same as disabling timeouts by default.
+
+ * @return {Object} A freshly created Registry object.
+ */
+function Registry (options)
+{
+    var self = this;
+
+    self.options = options;
+
+    self.hooks = {
+        queue:              [],
+        start:              [],
+        log:                [],
+        percentageComplete: [],
+        result:             [],
+        finish:             [],
+        error:              []
+    };
+
+
+    self.tasks = {};
+}
+
+<span id='Registry-method-registerHook'>/**
+</span> * Allows registering general purpose hooks that can be called in a variety of circumstances.
+ *
+ * @param hook - The name of the hook to be plugged into. The following are acceptable hooks:
+ *
+ * &quot;queue&quot; - This is a hook that is called when a task is being queued. The function should be in the form function(task, done)
+ *           You can record additional information to be stored with the task before it is queued using task.saveMetadata
+ *
+ * &quot;start&quot; - This is a hook that is called just prior to a task starting execution. The function should be in the form function(task, done)
+ *
+ * &quot;log&quot; - This is a hook that will be called every time a log message is emitted by a task. The function should be in the form function(task, log_level, message, done)
+ *
+ * &quot;percentageComplete&quot; - This is a hook that will be called every time the client changes the percent completion of the task. The function should be in the form function(task, percent, done)
+ *
+ * &quot;result&quot; - This is a hook that will be called anytime a task registers a result value. The function should be in the form function(task, result, done)
+ *
+ * &quot;finish&quot; - This is a hook that will be called when a task finishes successfully. This hook is mutually exclusive with the &quot;error&quot; hook. The function should be in the form function(task, done)
+ *
+ * &quot;error&quot; - This is a hook that will be called if a task sends back an error. This hook is mutually exclusive with the &quot;finish&quot; hook. The function should be in the form function(task, error, done)
+ *
+ * @param func - The function to be called when the triggering event for the hook occurs. The function form varies depending on the hook.
+ *
+ */
+Registry.prototype.registerHook = function registerHook (hook, func)
+{
+    var self = this;
+    if (!underscore.isString(hook))
+    {
+        throw new Error(&quot;Hook name must be a String&quot;);
+    }
+
+    if (!self.hooks[hook])
+    {
+        throw new Error(&quot;You are trying to plug into a hook, \&quot;&quot; + hook + &quot;\&quot;, that doesn't exist!&quot;);
+    }
+
+    self.hooks[hook].push(func);
+};
+
+
+<span id='Registry-method-registerTask'>/**
+</span> * Register a task that can be executed
+ * @method registerTask
+ *
+ *
+ * @param task - Task is an object containing information about the task being registered.
+ * @param task.name - A machine-readable name representing the task
+ * @param task.func - A function in the form of function(parameters, done) {} which executes the task itself.
+ *                     - parameters will be an object containing all parameters that were given for this task.
+ *                     - done is the callback that should called when the task has finished executing.
+ *
+ *                     The function will be called with a Task instance as this. Task instances have a few
+ *                     additional functions. @see Task
+ *
+ * @param task.schedule - An object containing information about how to schedule this task, if this is an automatically
+ *                        scheduled task.
+ *
+ * @param task.schedule.interval - The number of milliseconds between executions of this task.
+ *
+ * @param [task.timeout] - The timeout on the task. If set to null, the task will only close when finished.
+ *              All tasks should set timeouts! Otherwise hung / badly programmed tasks may bring
+ *              your worker to a halt. This field is mandatory unless a defaultTimeout is set
+ *              registry-wide. Timeout may impose a maximum runtime on the task.
+ *
+ * @param {Array} [task.redactParameters] - This can be used to provide a list of parameters that must be redacted if the task is
+ *                                          stored in a database anywhere. This can prevent parameters such as passwords from
+ *                                           being stored anywhere permanently.
+ * }
+ */
+Registry.prototype.registerTask = function registerTask (task)
+{
+    var self = this;
+
+    // Make sure the given task has a name
+    if (task.name === undefined || task.name === null)
+    {
+        throw new errors.TaskRegistrationError(&quot;Can not register a task without a name.&quot;);
+    }
+
+    // Make sure the given task name is not blank
+    if (task.name === &quot;&quot;)
+    {
+        throw new errors.TaskRegistrationError(&quot;Can't register a task with a blank name.&quot;);
+    }
+
+    // Make sure the given task name is not composed entirely of whitespace
+    if (task.name.trim() === &quot;&quot;)
+    {
+        throw new errors.TaskRegistrationError(&quot;Can't register a task with a name composed entirely of whitespace!&quot;);
+    }
+
+    // Check to see if a task with the given name already exists.
+    if (self.tasks[task.name] !== undefined)
+    {
+        throw new errors.TaskRegistrationError(&quot;A task with the name \&quot;&quot; + task.name + &quot;\&quot; already exists.&quot;);
+    }
+
+    // Can't register a task without a function to execute
+    if (task.func === undefined)
+    {
+        throw new errors.TaskRegistrationError(&quot;Can't register task &quot; + task.name + &quot;. Can't register a task without a function to execute.&quot;);
+    }
+
+    // Make sure its actually a function
+    if (!underscore.isFunction(task.func))
+    {
+        throw new errors.TaskRegistrationError(&quot;Can't register task &quot; + task.name + &quot;. The func field must be a function object.&quot;);
+    }
+
+    // If there is no default timeout set on the registry, ensure that the given task has a default timeout.
+    if (self.options.defaultTimeout === undefined &amp;&amp; task.timeout === undefined)
+    {
+        throw new errors.TaskRegistrationError(&quot;Can't register task &quot; + task.name + &quot;. You must set either a defaultTimeout on the Registry, or a timeout on individual task objects.&quot;);
+    }
+
+    // If there is a schedule but no interval set on the schedule, throw an error
+    if (task.schedule &amp;&amp; !task.schedule.interval)
+    {
+        throw new errors.TaskRegistrationError(&quot;Can't register task &quot; + task.name + &quot;. Scheduling information must contain at least the interval field.&quot;);
+    }
+
+    if (!task.redactParameters)
+    {
+        task.redactParameters = [];
+    }
+
+    self.tasks[task.name] = task;
+};
+
+
+// Expose the registry
+module.exports = Registry;</pre>
+</body>
+</html>
