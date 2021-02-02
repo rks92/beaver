@@ -25,9 +25,10 @@ describe("MongoosePlugin", function ()
     {
         if (mongoose.connection.readyState == 0)
         {
-            var connection = mongoose.connect("mongodb://localhost/worker_tests");
-            registry = new beaver.Registry({defaultTimeout: null});
-            beaver.MongoosePlugin.initialize(connection, {registry: registry, createMongoJobs: true, mongoJobAutoDeleteTime: 1000});
+            mongoose.connect("mongodb://localhost/worker_tests").then((conn) => {
+                registry = new beaver.Registry({defaultTimeout: null});
+                beaver.MongoosePlugin.initialize(conn, {registry: registry, createMongoJobs: true, mongoJobAutoDeleteTime: 1000});
+            })
         }
     });
 
