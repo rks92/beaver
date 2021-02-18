@@ -58,7 +58,7 @@
     "async": "1.4.x",
     "bluebird": "3.4.x",
     "moment": "2.10.x",
-    "mongoose": "5.11.14",
+    "mongoose": "5.9.29",
     "sift": "2.0.x",
     "underscore": "1.8.x"
   },

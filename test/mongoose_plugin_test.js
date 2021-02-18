@@ -71,7 +71,7 @@ describe("MongoosePlugin", function ()
                 var TestTask = mongoose.model('TestTask', TestTaskSchema);
 
                 // Remove any previous TestTasks
-                TestTask.remove({}, function (err)
+                TestTask.deleteMany({}, function (err)
                 {
                     var task = new TestTask({
                         testVar: "blah",
@@ -129,7 +129,7 @@ describe("MongoosePlugin", function ()
                 var FunctionQueryTestTask = mongoose.model('FunctionQueryTestTask', FunctionQueryTestTaskSchema);
 
                 // Remove any previous FunctionQueryTestTask
-                FunctionQueryTestTask.remove({}, function (err)
+                FunctionQueryTestTask.deleteMany({}, function (err)
                 {
                     var task = new FunctionQueryTestTask({
                         testVar: "blah",
@@ -234,7 +234,7 @@ describe("MongoosePlugin", function ()
                 var MultiStepTestTask = mongoose.model('MultiStepTestTask', MultiStepTestTaskSchema);
 
                 // Remove any previous MultiStepTestTask
-                MultiStepTestTask.remove({}, function (err)
+                MultiStepTestTask.deleteMany({}, function (err)
                 {
                     var task = new MultiStepTestTask({
                         testVar: "awesome",
@@ -339,7 +339,7 @@ describe("MongoosePlugin", function ()
                 QueueingTestTask = mongoose.model('QueueingTestTask', QueueingTestTaskSchema);
 
                 // Remove any previous MultiStepTestTask
-                QueueingTestTask.remove({}, function (err)
+                QueueingTestTask.deleteMany({}, function (err)
                 {
                     if (err)
                     {
